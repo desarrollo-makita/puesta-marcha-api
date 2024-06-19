@@ -20,24 +20,33 @@ async function puestaMarcha(req , res){
         let  orderOk=[];
         let orderFailed=[];
 
-        const arregloEntidades = await obtenerEntidades();
-
-        if (!arregloEntidades || arregloEntidades.length === 0) {
+        //microservicio obtener-entidades-ms
+        logger.info(`Ejecuta microservcio obtener-entidades-ms`); 
+        const arregloEntidades = await axios.get(`http://localhost:3022/ms/obtener-entidades`);
+        logger.debug(`Respuesta microservcio obtener-entidades-ms ${JSON.stringify(arregloEntidades.data)}`); 
+        
+        if (!arregloEntidades || arregloEntidades.data.length === 0) {
             return res.status(200).json({ mensaje: `No se encontro una lista de servicio tecnico asociado a la consulta` });
         }
 
-        const obtenerOrdenesPendientes = await obtenerOrdenes(arregloEntidades);
-        logger.info(`Resultado ${JSON.stringify(obtenerOrdenesPendientes)}`);
-        if ( obtenerOrdenesPendientes.length === 0) {
+        // const obtenerOrdenesPendientes = await obtenerOrdenes(arregloEntidades);
+        
+        //microservicio obtener-ordenes-servicio-rut-ms
+        logger.info(`Ejecuta microservcio obtener-ordenes-servicio-rut-ms`); 
+        const obtenerOrdenesPendientes = await axios.post(`http://localhost:3007/ms/obtener-orden-servicio-rut`, arregloEntidades.data);
+        logger.debug(`Respuesta microservcio obtener-ordenes-servicio-rut-ms ${JSON.stringify(obtenerOrdenesPendientes.data)}`); 
+        
+        logger.info(`Resultado ${JSON.stringify(obtenerOrdenesPendientes.data)}`);
+        if ( obtenerOrdenesPendientes.data.length === 0) {
             return res.status(200).json({ mensaje: `No existe data para procesar` });
         }
 
         //buscar precio de mano de obra consultando api de producto de telecontrol
-        const precioManoObra =  await obtenerPrecio(obtenerOrdenesPendientes);
+        const precioManoObra =  await obtenerPrecio(obtenerOrdenesPendientes.data);
         logger.info(`Resultado precioManoObra : ${JSON.stringify(precioManoObra)}`);
 
         //Organizamos la data necesaria para crear documento nota de vent ain terna para puestas en marcha.
-        const resPreparaData = await preparaData(obtenerOrdenesPendientes, precioManoObra );
+        const resPreparaData = await preparaData(obtenerOrdenesPendientes.data, precioManoObra );
         
         // microservicio insertar-orden-ms
         logger.info(`Ejecuta microservcio insertar-orden-ms`); 
@@ -57,7 +66,7 @@ async function puestaMarcha(req , res){
         res.status(200).json({ordenesIngresadas : orderOk , ordenesRepetidas : orderFailed});
        
     }catch (error) {
-        
+        console.log("eeror--->" , error);
         if (error.response && error.response.data) {
             const mensajeError = error.response.data.mensaje || error.response.data.error || error.response.data || 'Error desconocido';
             res.status(error.response.status || 500).json({ error: mensajeError });
@@ -65,98 +74,6 @@ async function puestaMarcha(req , res){
             res.status(500).json({ error: `Error en el servidor: ${error.message}` });
         }
         
-    }
-
-}
-
-/**
- * 
- * @returns Arreglo de entidades
- */
-async function obtenerEntidades(){
-    try {
-        
-        logger.info(`Iniciamos la funcion obtenerEntidades`);
-      
-        await connectToDatabase('BdQMakita');
-        
-        const consulta = `select  Empresa, tipoEntidad , Entidad, Nombre , RazonSocial, Direccion
-                          from BdQMakita.dbo.Entidad 
-                          where tipoEntidad = 'Cliente' 
-                          and Vigencia = 'S' 
-                          and Categoria = 'Servicio Tecnico' 
-                          and Empresa = 'Makita'
-`;
-        const result = await sql.query(consulta);
-        logger.info(`Fin de la funcion obtenerEntidades`);
-
-        return result.recordsets[0];
-    } catch (error) {
-        
-        logger.error(`Error en obtenerEntidades: ${error.message}`);
-        throw error;
-        
-    }finally{
-        await closeDatabaseConnection();
-    }
-}
-
-
-/**
- * Se obtienen ordenes de servicio utilizando rut de la entidad del servicio tecnico
- * @param {*} entidadesList 
- * @returns 
- */
-async function obtenerOrdenes(entidadesList) {
-    logger.info(`Iniciamos la función obtenerOrdenes`);
-
-    try {
-        const dateInicio = await fechaInicio();
-        const dateFin = await fechaFin();
-        let ordenesPendientesList = [];
-        //const ordenesPendientesList2 = [{Entidad:'76890098-0' , Direccion:'SANTA ROSA1508-1510' }, {Entidad:'76279534-5',Direccion:'SANTA ROSA1508-1510'} , {Entidad:'16205650-8',Direccion:'SANTA ROSA1508-1510'},]; // se deja a modo de prueba
-        for (const entidad of entidadesList) {
-            try {
-                entidad.Entidad = entidad.Entidad.replace(/-/g, '');
-                const url = `http://backend2.telecontrol.com.br/homologation-os/ordem/cnpj/${entidad.Entidad}/dataInicio/${dateInicio}/dataFim/${dateFin}`;
-                logger.info(`URL :  ${url}`);
-
-                const response = await axios.get(url, {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Access-Application-Key': '3d137dea1d13220aa9a10ee57d69f6b30d247f28',
-                        'Access-Env': 'HOMOLOGATION',
-                        'X-Custom-Header': 'value'
-                    }
-                });
-
-            if (response.data && response.data.os) {
-                const updatedOs = response.data.os.map(os => ({
-                    ...os,
-                    direccion: entidad.Direccion
-                  }));
-                ordenesPendientesList = ordenesPendientesList.concat(updatedOs);
-            }
-            } catch (error) {
-                if (error.response && error.response.status === 404) {
-                    logger.error(`Error ${JSON.stringify(error.response.data)}`);
-                } else {
-                    logger.error(`Error al procesar la entidad ${entidad.Entidad}: ${error.message}`);
-                    throw error; 
-                }
-            }
-        }
-
-        const filtradas = ordenesPendientesList.filter(orden => orden.descricao_tipo_atendimento === "Puesta En Marcha")
-                                               .map(orden => ({ ...orden, idPedido: null }));;
-
-
-        logger.info(`Fin de la función obtenerOrdenes`);
-        return filtradas;
-    
-    } catch (error) {
-        logger.error(`Error general en obtenerOrdenes: ${error.message}`);
-        throw error;
     }
 }
 
@@ -202,30 +119,6 @@ async function obtenerPrecio(ordenesList){
     }
 }
 
-async function  fechaFin(){
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0'); // Los meses son 0-11
-    const day = String(today.getDate()).padStart(2, '0'); // Los días son 1-31
-
-    const formattedDate = `${year}-${month}-${day}`;
-    return formattedDate;
-}
-
-
-async function fechaInicio(){
-    const today = new Date();
-    const back = new Date(today);
-    back.setDate(today.getDate() - 30);
-
-    const year = back.getFullYear();
-    const month = String(back.getMonth() + 1).padStart(2, '0');
-    const day = String(back.getDate()).padStart(2, '0');
-
-    const formattedBackDate = `${year}-${month}-${day}`;
-
-    return formattedBackDate;
-}
 
 /**
  * Crea nota de venta interna en qubys, llama sp Crea_NotaVentaInterna_PuestaOP
