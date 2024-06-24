@@ -66,7 +66,7 @@ async function puestaMarcha(req , res){
         res.status(200).json({ordenesIngresadas : orderOk , ordenesRepetidas : orderFailed});
        
     }catch (error) {
-        console.log("eeror--->" , error);
+        console.log("error--->" , error);
         if (error.response && error.response.data) {
             const mensajeError = error.response.data.mensaje || error.response.data.error || error.response.data || 'Error desconocido';
             res.status(error.response.status || 500).json({ error: mensajeError });
