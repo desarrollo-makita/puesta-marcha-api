@@ -22,7 +22,7 @@ async function puestaMarcha(req , res){
 
         //microservicio obtener-entidades-ms
         logger.info(`Ejecuta microservcio obtener-entidades-ms`); 
-        const arregloEntidades = await axios.get(`http://localhost:3022/ms/obtener-entidades`);
+        const arregloEntidades = await axios.get(`http://172.16.1.206:3022/ms/obtener-entidades`);
         logger.debug(`Respuesta microservcio obtener-entidades-ms ${JSON.stringify(arregloEntidades.data)}`); 
         
         if (!arregloEntidades || arregloEntidades.data.length === 0) {
@@ -33,7 +33,7 @@ async function puestaMarcha(req , res){
         
         //microservicio obtener-ordenes-servicio-rut-ms
         logger.info(`Ejecuta microservcio obtener-ordenes-servicio-rut-ms`); 
-        const obtenerOrdenesPendientes = await axios.post(`http://localhost:3007/ms/obtener-orden-servicio-rut`, arregloEntidades.data);
+        const obtenerOrdenesPendientes = await axios.post(`http://172.16.1.206:3007/ms/obtener-orden-servicio-rut`, arregloEntidades.data);
         logger.debug(`Respuesta microservcio obtener-ordenes-servicio-rut-ms ${JSON.stringify(obtenerOrdenesPendientes.data)}`); 
         
         logger.info(`Resultado ${JSON.stringify(obtenerOrdenesPendientes.data)}`);
@@ -71,7 +71,7 @@ async function puestaMarcha(req , res){
             const mensajeError = error.response.data.mensaje || error.response.data.error || error.response.data || 'Error desconocido';
             res.status(error.response.status || 500).json({ error: mensajeError });
         } else {
-            res.status(500).json({ error: `Error en el servidor: ${error.message}` });
+            res.status(500).json({ error: `Error en el servidor: ${error.message} || ${error.errors}` });
         }
         
     }
@@ -96,8 +96,8 @@ async function obtenerPrecio(ordenesList){
             const response = await axios.get(url, {
                 headers: {
                     'Content-Type': 'application/json',
-                    'Access-Application-Key': '3d137dea1d13220aa9a10ee57d69f6b30d247f28',
-                    'Access-Env': 'HOMOLOGATION',
+                    'Access-Application-Key': '588b56a33c722da5e49170a311e872d9ee967291',
+                    'Access-Env': 'PRODUCTION',
                     'X-Custom-Header': 'value'
                 }
             });
@@ -129,7 +129,7 @@ async function crearNotaventaInterna(dataDocumentoList) {
     logger.info(`Iniciamos la funcion creaDocumento nota de venta interna`);
     try {
         // Conecta a la base de datos
-        await connectToDatabase('DTEBdQMakita');
+        await connectToDatabase('BdQMakita');
         
         for(oredenPedido of dataDocumentoList){
             const { os: Correlativo, cnpj: RutCliente , mao_de_obra: ManoObra , produto: ProductoID  } = oredenPedido;
