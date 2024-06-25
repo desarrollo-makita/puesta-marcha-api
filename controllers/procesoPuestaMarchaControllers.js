@@ -3,6 +3,7 @@ const logger = require('../config/logger.js');
 const { connectToDatabase, closeDatabaseConnection } = require('../config/database.js');
 const sql = require('mssql');
 require('dotenv').config();
+const { rolbackData } = require('../config/rolbackData.js');
 
 
 
@@ -13,12 +14,13 @@ require('dotenv').config();
  * @returns 
  */
 async function puestaMarcha(req , res){
+    let data;
+    let  orderOk=[];
+    let orderFailed=[];
     try{
        
         logger.info(`Iniciamos la funcion puestaMarcha`);
-        let data;
-        let  orderOk=[];
-        let orderFailed=[];
+       
 
         //microservicio obtener-entidades-ms
         logger.info(`Ejecuta microservcio obtener-entidades-ms`); 
@@ -54,10 +56,10 @@ async function puestaMarcha(req , res){
         
         for(element of resInsertarOrden.data){
             if(element.Insertado === 0){
-                orderOk.push(element.resultadoID);
+                orderOk.push(element);
                 
             }else{
-                orderFailed.push(element.resultadoID)
+                orderFailed.push(element);
             } 
         }
         
@@ -71,6 +73,9 @@ async function puestaMarcha(req , res){
         res.status(200).json({ordenesIngresadas : orderOk , ordenesRepetidas : orderFailed});
        
     }catch (error) {
+        if(orderOk.length > 0){
+            await rolbackData(orderOk);
+        }
         console.log("error--->" , error);
         if (error.response && error.response.data) {
             const mensajeError = error.response.data.mensaje || error.response.data.error || error.response.data || 'Error desconocido';
@@ -141,7 +146,7 @@ async function crearNotaventaInterna(dataDocumentoList) {
             const request = new sql.Request();
             // Ejecuta el procedimiento almacenado con los parámetros
             result = await request.query`
-            EXEC Crea_NotaVentaInterna_PuestaOP 
+            EXEC Crea_NotaVentaInterna_PuestaOP
             @Empresa        =   'Makita', 
             @TipoDocumento  =   'NOTA DE VTA INTERNA', 
             @Correlativo    =   ${Correlativo}, 
@@ -157,6 +162,7 @@ async function crearNotaventaInterna(dataDocumentoList) {
     } catch (error) {
         // Manejamos cualquier error ocurrido durante el proceso
         logger.error(`Error en crear documento nota venta interna: ${error.message}`);
+        throw error;
        
     }finally{
         // Cierra la conexión a la base de datos
