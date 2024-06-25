@@ -55,12 +55,17 @@ async function puestaMarcha(req , res){
         for(element of resInsertarOrden.data){
             if(element.Insertado === 0){
                 orderOk.push(element.resultadoID);
+                
             }else{
                 orderFailed.push(element.resultadoID)
             } 
         }
         
-        const creaDocumento = await crearNotaventaInterna(resPreparaData);
+        console.log(orderOk.length);
+        if(orderOk.length > 0){
+            const creaDocumento = await crearNotaventaInterna(resPreparaData);
+        }
+        
         logger.info(`Status de respuesta :  Ingresadas : ${orderOk} , No ingresadas : ${orderFailed}`);
     
         res.status(200).json({ordenesIngresadas : orderOk , ordenesRepetidas : orderFailed});
@@ -129,7 +134,7 @@ async function crearNotaventaInterna(dataDocumentoList) {
     logger.info(`Iniciamos la funcion creaDocumento nota de venta interna`);
     try {
         // Conecta a la base de datos
-        await connectToDatabase('BdQMakita');
+        await connectToDatabase('DTEBdQMakita');
         
         for(oredenPedido of dataDocumentoList){
             const { os: Correlativo, cnpj: RutCliente , mao_de_obra: ManoObra , produto: ProductoID  } = oredenPedido;
