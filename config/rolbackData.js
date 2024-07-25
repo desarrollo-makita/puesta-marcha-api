@@ -6,7 +6,7 @@ async function rolbackData(data) {
     try {
        logger.info(`Iniciamos proceso de rollback`);
          let result;
-        // Conectarse a la base de datos 'BdQMakita'
+        
         await connectToDatabase('Telecontrol');
         const request = new sql.Request(); // Nueva instancia de request en cada iteración
         result = await request

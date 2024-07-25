@@ -19,6 +19,8 @@ async function puestaMarcha(req , res){
     let data;
     let orderOk=[];
     let orderFailed=[];
+    let responseDocumentosInternos;
+                
    try{
        
         logger.info(`Iniciamos la funcion puestaMarcha`);
@@ -49,13 +51,13 @@ async function puestaMarcha(req , res){
             // microservicio insertar-orden-ms
             logger.info(`Ejecuta microservcio insertar-orden-ms`); 
             const resInsertarOrden = await axios.post('http://172.16.1.206:3017/ms/insertar-orden', resData );
-            console.log("12345678" , resInsertarOrden);
+            
             for(element of resInsertarOrden.data){
                 if(element.Insertado === 0){
-                    orderOk.push(element);
+                    orderOk.push(element.resultadoID);
                     
                 }else{
-                    orderFailed.push(element);
+                    orderFailed.push(element.resultadoID);
                 } 
             }
             
@@ -66,11 +68,14 @@ async function puestaMarcha(req , res){
                 logger.info(`Ejecuta microservcio insertar-documentos-ms`); 
                 const responseDocumentos = await axios.post(`http://172.16.1.206:3023/ms/insertar-documentos`, resData);
                 logger.debug(`Respuesta microservcio insertar-documentos-ms ${JSON.stringify(responseDocumentos.data)}`);
+
+                responseDocumentosInternos = await crearNotaventaInterna(resData);
+                
             
             }
             
+            return res.status(200).json({mensaje  : 'Proceso Completo' , procesadas : orderOk , NoProcesadas : orderFailed });
             
-            return res.status(200).json({ok : orderOk , NOOK : orderFailed , nuevo:  responseDocumentos.data });
        }
         
     }catch (error) {
@@ -115,7 +120,7 @@ async function agregarDocumento(dataList){
                         os_anexos = dataArchivos[""].os_anexos;
                         // Agregamos la propiedad idPedido a la orden de servicio
                         const osArrayWithIdPedido = response.data.os
-                        .map(obj => ({ ...obj, arregloLink :os_anexos, idPedido: 0  }));
+                        .map(obj => ({ ...obj, arregloLink :os_anexos, idPedido: 0 , mao_de_obra: '0' }));
                         dataFormatedList.push(...osArrayWithIdPedido);
                     }
                 }
@@ -155,30 +160,25 @@ async function crearNotaventaInterna(dataDocumentoList) {
         
         
         for (const ordenPedido of dataDocumentoList) {
+            
             const correlativo = ordenPedido.os;
+            const rutCliente = ordenPedido.cnpj.trim();
+            
             // Conecta a la base de datos
             await connectToDatabase('DTEBdQMakita');
             try {
-                const { os: Correlativo, cnpj: RutCliente, mao_de_obra: ManoObra, produto: ProductoID } = ordenPedido;
+        
                 const request = new sql.Request();
-
-                // Eliminar espacios en blanco de los parámetros
                 
-                const rutCliente = RutCliente.trim();
-                const manoObra = ManoObra.trim();
-                const itemDet = process.env.ITEM_PUESTA_MARCHA.trim();
-                const productoID = ProductoID;
-
-                // Ejecuta el procedimiento almacenado con los parámetros
+               // Ejecuta el procedimiento almacenado con los parámetros
                 const result = await request.query`
                     EXEC Crea_NotaVentaInterna_PuestaOP
                     @Empresa        =   'Makita', 
                     @TipoDocumento  =   'NOTA DE VTA INTERNA', 
                     @Correlativo    =   ${correlativo}, 
                     @RutCliente     =   ${rutCliente},
-                    @ManoObra       =   ${manoObra},
-                    @ItemDet        =   '${process.env.ITEM_PUESTA_MARCHA}',
-                    @ProductoID     =   ${productoID}`;
+                    @ManoObra  =   0,
+                    @ItemDet        =   'EE00000004}'`;
 
                 logger.info(`Documento creado exitosamente para correlativo ${correlativo}`);
                 ingresadas.push(correlativo);
@@ -197,9 +197,11 @@ async function crearNotaventaInterna(dataDocumentoList) {
         }
 
         logger.info(`Fin de la función creaDocumento`);
-        return { mensaje: 'Proceso completado', ordenIngresadas : ingresadas , ordenNoIngresdas : noIngresadas };
+        return { mensaje: 'Proceso completado', ordenIngresadas : ingresadas , ordenNoIngresadas : noIngresadas };
 
     } catch (error) {
+        noIngresadas.push(correlativo);
+        await rolbackData(correlativo);
         // Manejar cualquier error general que ocurra fuera del bucle
         logger.error(`Error general en crear documento nota venta interna: ${error.message}`);
         throw error;
