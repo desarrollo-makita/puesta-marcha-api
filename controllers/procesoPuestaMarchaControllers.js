@@ -165,7 +165,7 @@ async function crearNotaventaInterna(dataDocumentoList) {
             const rutCliente = ordenPedido.cnpj.trim();
             
             // Conecta a la base de datos
-            await connectToDatabase('DTEBdQMakita');
+            await connectToDatabase('BdQMakita');
             try {
         
                 const request = new sql.Request();
